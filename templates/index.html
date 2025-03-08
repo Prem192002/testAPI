@@ -3,85 +3,124 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Payment Testing</title>
-</head>
-<body>
-    <h1>Test Razorpay Payment</h1>
-    <form id="subscribeForm">
-        <input type="text" id="userId" placeholder="User ID" required><br>
-        <input type="text" id="planType" placeholder="Plan Type (monthly/quarterly/yearly)" required><br>
-        <input type="number" id="amount" placeholder="Amount (INR)" required><br>
-        <button type="submit">Subscribe</button>
-    </form>
-
-    <h2>Capture Payment</h2>
-    <form id="captureForm" style="display:none;">
-        <input type="hidden" id="orderId"><br>
-        <button type="button" onclick="capturePayment()">Capture Payment</button>
-    </form>
-
+    <title>Razorpay Subscription</title>
     <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
     <script>
-        const subscribeForm = document.getElementById('subscribeForm');
-        subscribeForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const userId = document.getElementById('userId').value;
-            const planType = document.getElementById('planType').value;
-            const amount = document.getElementById('amount').value;
+        async function createSubscription() {
+            const user_id = document.getElementById("user_id").value.trim();
+            const amount = document.getElementById("amount").value;
+            const subscription_type = document.getElementById("subscription_type").value.trim();
 
-            // Create order
-            const response = await fetch('/subscribe', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ user_id: userId, plan_type: planType, amount: amount })
-            });
-            const result = await response.json();
-            if (response.ok) {
-                const orderId = result.order_id;
-                document.getElementById('orderId').value = orderId;
-                launchRazorpay(orderId, amount);
-            } else {
-                alert(result.error);
+            if (!user_id || !amount || !subscription_type) {
+                alert("Please fill all fields.");
+                return;
             }
-        });
 
-        function launchRazorpay(orderId, amount) {
-            const options = {
-                key: 'rzp_test_Eq8uqfMCsJDdRE',
-                amount: amount * 100,  // Convert INR to paise
-                currency: 'INR',
-                order_id: orderId,
-                handler: function (response) {
-                    alert(`Payment successful! Payment ID: ${response.razorpay_payment_id}`);
-                    document.getElementById('captureForm').style.display = 'block';
-                },
-                prefill: {
-                    name: 'prem',
-                    email: 'prem@example.com',
-                    contact: '9999999999'
+            if (isNaN(amount) || amount <= 0) {
+                alert("Please enter a valid amount greater than 0.");
+                return;
+            }
+
+            // Step 1: Create Subscription
+            try {
+                const response = await fetch("http://127.0.0.1:8000/create-subscription", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ user_id, amount, subscription_type })
+                });
+
+                const data = await response.json();
+                if (response.ok) {
+                    alert("Subscription created. Proceeding to payment...");
+                    createOrder(user_id);
+                } else {
+                    alert("Error: " + data.detail);
                 }
-            };
-            const rzp = new Razorpay(options);
-            rzp.open();
+            } catch (error) {
+                alert("Network error: " + error.message);
+            }
         }
 
-        async function capturePayment() {
-            const orderId = document.getElementById('orderId').value;
-            const amount = document.getElementById('amount').value;
+        async function createOrder(user_id) {
+            // Step 2: Create Razorpay Order
+            try {
+                const response = await fetch("http://127.0.0.1:8000/create-order", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ user_id })
+                });
 
-            // Capture payment
-            const response = await fetch('/capture-payment', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ order_id: orderId, amount: amount })
-            });
-            const result = await response.json();
-            if (response.ok) {
-                alert(`Payment captured successfully! Payment ID: ${result.payment_id}`);
-            } else {
-                alert(result.error);
+                const data = await response.json();
+                if (response.ok) {
+                    openRazorpayCheckout(data.order_id);
+                } else {
+                    alert("Error: " + data.detail);
+                }
+            } catch (error) {
+                alert("Network error: " + error.message);
+            }
+        }
+
+        function openRazorpayCheckout(order_id) {
+            const options = {
+                "key": "rzp_test_Eq8uqfMCsJDdRE", // Replace with your Razorpay test key
+                "amount": document.getElementById("amount").value * 100, // Convert to paisa
+                "currency": "INR",
+                "name": "Subscription Payment",
+                "description": "Razorpay Subscription Payment",
+                "order_id": order_id,
+                "handler": function (response) {
+                    verifyPayment(response);
+                },
+                "prefill": {
+                    "email": "test@example.com",
+                    "contact": "9876543210"
+                },
+                "theme": { "color": "#3399cc" }
+            };
+            const rzp1 = new Razorpay(options);
+            rzp1.open();
+        }
+
+        async function verifyPayment(paymentData) {
+            try {
+                const response = await fetch("http://127.0.0.1:8000/payment-verify", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        payment_info: {
+                            razorpay_order_id: paymentData.razorpay_order_id,
+                            razorpay_payment_id: paymentData.razorpay_payment_id,
+                            razorpay_signature: paymentData.razorpay_signature
+                        }
+                    })
+                });
+
+                const data = await response.json();
+                if (response.ok) {
+                    alert("Payment successful! Subscription activated.");
+                } else {
+                    console.error("Verification failed with status:", response.status, "Details:", data);
+                    alert("Payment verification failed: " + (data.detail || "Unknown error"));
+                }
+            } catch (error) {
+                console.error("Network error:", error);
+                alert("Network error: " + error.message);
             }
         }
     </script>
+</head>
+<body>
+    <h2>Razorpay Subscription</h2>
+    <label>User ID:</label>
+    <input type="text" id="user_id" required><br><br>
+
+    <label>Amount (INR):</label>
+    <input type="number" id="amount" required min="1" step="0.01"><br><br>
+
+    <label>Subscription Type:</label>
+    <input type="text" id="subscription_type" required><br><br>
+
+    <button onclick="createSubscription()">Subscribe & Pay</button>
 </body>
 </html>
