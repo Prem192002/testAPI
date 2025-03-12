@@ -5,28 +5,77 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Razorpay Subscription</title>
     <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        h2 {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .user-id-container {
+            margin-bottom: 30px;
+            text-align: center;
+        }
+        .subscription-container {
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+        .subscription-card {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 20px;
+            width: 300px;
+            text-align: center;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            transition: transform 0.2s;
+        }
+        .subscription-card:hover {
+            transform: scale(1.05);
+        }
+        .subscription-card h3 {
+            margin: 0 0 10px;
+            color: #333;
+        }
+        .subscription-card p {
+            margin: 5px 0;
+            color: #666;
+        }
+        .subscription-card button {
+            background-color: #3399cc;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 5px;
+        }
+        .subscription-card button:hover {
+            background-color: #287ca8;
+        }
+    </style>
     <script>
+        const CREDIT_AMOUNT = 1000; // Matches backend CREDIT_AMOUNT
+
         async function createSubscription() {
             const user_id = document.getElementById("user_id").value.trim();
-            const amount = document.getElementById("amount").value;
-            const subscription_type = document.getElementById("subscription_type").value.trim();
 
-            if (!user_id || !amount || !subscription_type) {
-                alert("Please fill all fields.");
+            if (!user_id) {
+                alert("Please enter your User ID.");
                 return;
             }
 
-            if (isNaN(amount) || amount <= 0) {
-                alert("Please enter a valid amount greater than 0.");
-                return;
-            }
-
-            // Step 1: Create Subscription
             try {
                 const response = await fetch("http://127.0.0.1:8000/create-subscription", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ user_id, amount, subscription_type })
+                    body: JSON.stringify({ user_id })
                 });
 
                 const data = await response.json();
@@ -42,7 +91,6 @@
         }
 
         async function createOrder(user_id) {
-            // Step 2: Create Razorpay Order
             try {
                 const response = await fetch("http://127.0.0.1:8000/create-order", {
                     method: "POST",
@@ -63,11 +111,11 @@
 
         function openRazorpayCheckout(order_id) {
             const options = {
-                "key": "rzp_test_Eq8uqfMCsJDdRE", // Replace with your Razorpay test key
-                "amount": document.getElementById("amount").value * 100, // Convert to paisa
+                "key": "rzp_test_Eq8uqfMCsJDdRE",
+                "amount": CREDIT_AMOUNT * 100, // Convert to paisa
                 "currency": "INR",
                 "name": "Subscription Payment",
-                "description": "Razorpay Subscription Payment",
+                "description": "30-Day Credit Subscription",
                 "order_id": order_id,
                 "handler": function (response) {
                     verifyPayment(response);
@@ -108,19 +156,50 @@
                 alert("Network error: " + error.message);
             }
         }
+
+        async function simulateUsage(user_id, usage_amount) {
+            try {
+                const response = await fetch("http://127.0.0.1:8000/update-usage", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ user_id, usage_amount })
+                });
+
+                const data = await response.json();
+                if (response.ok) {
+                    if (data.notification) {
+                        alert(data.notification);
+                    }
+                    if (data.invoice_url) {
+                        console.log("Invoice generated at:", data.invoice_url);
+                    }
+                    console.log("Remaining amount:", data.remaining_amount);
+                } else {
+                    alert("Error: " + data.detail);
+                }
+            } catch (error) {
+                alert("Network error: " + error.message);
+            }
+        }
     </script>
 </head>
 <body>
     <h2>Razorpay Subscription</h2>
-    <label>User ID:</label>
-    <input type="text" id="user_id" required><br><br>
-
-    <label>Amount (INR):</label>
-    <input type="number" id="amount" required min="1" step="0.01"><br><br>
-
-    <label>Subscription Type:</label>
-    <input type="text" id="subscription_type" required><br><br>
-
-    <button onclick="createSubscription()">Subscribe & Pay</button>
+    <div class="user-id-container">
+        <label for="user_id">User ID:</label>
+        <input type="text" id="user_id" required placeholder="Enter your User ID">
+    </div>
+    <div class="subscription-container">
+        <div class="subscription-card">
+            <h3>30-Day Credit Plan</h3>
+            <p>₹1000 / 30 days</p>
+            <p>Get ₹1000 credit for your usage</p>
+            <button onclick="createSubscription()">Subscribe</button>
+        </div>
+    </div>
+    <!-- For testing usage simulation -->
+    <div style="text-align: center; margin-top: 20px;">
+        <button onclick="simulateUsage(document.getElementById('user_id').value, 200)">Simulate ₹200 Usage</button>
+    </div>
 </body>
 </html>
